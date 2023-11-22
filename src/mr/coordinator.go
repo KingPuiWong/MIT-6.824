@@ -140,6 +140,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 func (c *Coordinator) checkWorkTimeout() {
 	for {
+		time.Sleep(1 * time.Second)
 		c.mu.Lock()
 		for fileName, task := range c.executingMapTask {
 			if time.Since(task.StartAtTime) > workerTimeout {
