@@ -60,7 +60,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		if ok {
 			switch task.TaskType {
 			case InitialType:
-				time.Sleep(3 * time.Second)
+				time.Sleep(5 * time.Second)
 				continue
 			case MapTaskType:
 				intermediateFileInfo, err := doMapTask(mapf, task)
@@ -69,13 +69,13 @@ func Worker(mapf func(string, string) []KeyValue,
 				}
 				reportMapTaskDone(task, intermediateFileInfo)
 			case ReduceTaskType:
-				//time.Sleep(3 * time.Second)
 				if err := doReduceTask(reducef, task); err != nil {
 					continue
 				}
 				reportReduceTaskDone(task)
 			default:
 				log.Fatal("unknown task type")
+				return
 			}
 		}
 	}
@@ -95,20 +95,22 @@ func reportReduceTaskDone(task FetchTaskReply) {
 
 func doMapTask(mapf func(string, string) []KeyValue, task FetchTaskReply) ([]IntermediateFileInfo, error) {
 	intermediate := []KeyValue{}
-	file, err := os.Open(task.FileName)
-	if err != nil {
-		log.Fatalf("cannot open %v", task.FileName)
-	}
+	//file, err := os.Open(task.FileName)
+	//if err != nil {
+	//	log.Fatalf("cannot open %v", task.FileName)
+	//	return nil, err
+	//}
 
-	content, err := ioutil.ReadAll(file)
+	content, err := ioutil.ReadFile(task.FileName)
 	if err != nil {
 		log.Fatalf("cannot read %v", task.FileName)
-	}
-
-	if err := file.Close(); err != nil {
-		log.Fatalf("cannot close %v", task.FileName)
 		return nil, err
 	}
+
+	//if err := file.Close(); err != nil {
+	//	log.Fatalf("cannot close %v", task.FileName)
+	//	return nil, err
+	//}
 
 	kva := mapf(task.FileName, string(content))
 	intermediate = append(intermediate, kva...)
@@ -133,14 +135,14 @@ func storeMapIntermediate(intermediate []KeyValue, mapTaskID, nReduce int) ([]In
 	// store intermediate for each reduce task
 	divideKeyValue := make([][]KeyValue, nReduce)
 	for _, value := range intermediate {
-		var iHash = ihash(value.Key) % nReduce
+		iHash := ihash(value.Key) % nReduce
 		divideKeyValue[iHash] = append(divideKeyValue[iHash], value)
 	}
 
 	intermediateFileInfo := make([]IntermediateFileInfo, nReduce)
 	for reduceID, intermediateValue := range divideKeyValue {
 		fileName := fmt.Sprintf("mr-%d-%d", mapTaskID, reduceID)
-		file, err := os.CreateTemp("./", fileName+"-temp")
+		file, err := os.CreateTemp("./", fileName+"-*")
 		if err != nil {
 			log.Fatalf("cannot create %v", fileName)
 			return nil, err
@@ -180,8 +182,8 @@ func doReduceTask(reducef func(string, []string) string, task FetchTaskReply) er
 	}
 
 	sort.Sort(ByKey(intermediate))
-	oname := "mr-out-"
-	ofile, _ := os.CreateTemp("./", oname+"-temp")
+	oname := "mr-out"
+	ofile, _ := os.CreateTemp("./", oname+"-*")
 
 	//
 	// call Reduce on each distinct key in intermediate[],
@@ -207,13 +209,13 @@ func doReduceTask(reducef func(string, []string) string, task FetchTaskReply) er
 		i = j
 	}
 
-	os.Rename(ofile.Name(), "./"+oname+strconv.Itoa(task.TaskID))
+	os.Rename(ofile.Name(), "./"+oname+"-"+strconv.Itoa(task.TaskID))
 	ofile.Close()
 	return nil
 }
 
 func readMapIntermediate(fileNames []string) ([]KeyValue, error) {
-	kva := []KeyValue{}
+	var kva []KeyValue
 	for _, fileName := range fileNames {
 		open, err := os.Open(fileName)
 		defer open.Close()
